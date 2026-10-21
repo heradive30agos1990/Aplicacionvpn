@@ -50,21 +50,18 @@ jobs:
           make android-apk-install-deps
           echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
 
-           - name: Firma del APK
-        env:
-          KEY_B64: ${{ secrets.ANDROID_SIGNING_KEY }}
-          STORE_PASS: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
-          KEY_PASS: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+      - name: Firma del APK
         run: |
-          printf '%s' "$KEY_B64" | tr -d ' \r\n' | base64 --decode > android/key.jks
-          keytool -list -keystore android/key.jks -storepass "$STORE_PASS" -alias "$KEY_ALIAS"
-          printf 'storeFile=%s\nstorePassword=%s\nkeyPassword=%s\nkeyAlias=%s\n' "$(pwd)/android/key.jks" "$STORE_PASS" "$KEY_PASS" "$KEY_ALIAS" > android/key.properties
+          echo "${{ secrets.ANDROID_SIGNING_KEY }}" | base64 --decode > android/key.jks
+          echo "storeFile=$(pwd)/android/key.jks" > android/key.properties
+          echo "storePassword=${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}" >> android/key.properties
+          echo "keyPassword=${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}" >> android/key.properties
 
-           - name: Usar el ícono propio (quitar íconos adaptables antiguos)
-           run: |
-           rm -rf android/app/src/main/res/mipmap-anydpi* || true
-           rm -f android/app/src/main/res/mipmap-*/ic_launcher.webp android/app/src/main/res/mipmap-*/ic_launcher_round.webp || true
+      - name: Usar el ícono propio (quitar íconos adaptables antiguos)
+        run: |
+          rm -rf android/app/src/main/res/mipmap-anydpi* || true
+          rm -f android/app/src/main/res/mipmap-*/ic_launcher.webp android/app/src/main/res/mipmap-*/ic_launcher_round.webp || true
 
       - name: Preparar
         run: make android-apk-prepare
