@@ -111,6 +111,10 @@ class RoutingConfigNotifier extends _$RoutingConfigNotifier {
           // Prevent showing chainOptions while hasAnyProfile == false
           return '/settings';
         }
+        // App bloqueada: solo se permite la pantalla principal (sin ajustes, proxies, logs, etc.).
+        if (state.matchedLocation != '/home' && state.matchedLocation != '/intro') {
+          return '/home';
+        }
         return null;
       },
       routes: <RouteBase>[

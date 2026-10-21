@@ -3,13 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
 import 'package:hiddify/core/app_info/app_info_provider.dart';
 import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
 import 'package:hiddify/features/home/widget/connection_button.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
-import 'package:hiddify/features/profile/widget/profile_tile.dart';
-import 'package:hiddify/features/proxy/active/active_proxy_card.dart';
+import 'package:hiddify/features/home/widget/empty_profiles_home_body.dart';
+import 'package:hiddify/features/profile/notifier/profiles_update_notifier.dart';
+import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
+import 'package:hiddify/features/profile/model/profile_entity.dart';
+import 'package:hiddify/features/profile/overview/profiles_notifier.dart';
 import 'package:hiddify/features/proxy/active/active_proxy_delay_indicator.dart';
-import 'package:hiddify/gen/assets.gen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 
@@ -34,12 +35,12 @@ class HomePage extends HookConsumerWidget {
         //     : null,
         title: Row(
           children: [
-            Assets.images.logo.svg(height: 24),
+            Image.asset('assets/images/source/ic_launcher_border.png', height: 28),
             const Gap(8),
             Text.rich(
               TextSpan(
                 children: [
-                  TextSpan(text: t.common.appTitle),
+                  const TextSpan(text: 'Internet Ilimitado'),
                   const TextSpan(text: " "),
                   const WidgetSpan(child: AppVersionLabel(), alignment: PlaceholderAlignment.middle),
                 ],
@@ -47,29 +48,6 @@ class HomePage extends HookConsumerWidget {
             ),
           ],
         ),
-        actions: [
-          // IconButton(
-          //     onPressed: () => const QuickSettingsRoute().push(context),
-          //     icon: const Icon(FluentIcons.options_24_filled),
-          //     material: (context, platform) => MaterialIconButtonData(
-          //           tooltip: t.config.quickSettings,
-          //         )),
-          // IconButton(
-          //     onPressed: () => const AddProfileRoute().push(context),
-          //     icon: const Icon(FluentIcons.add_circle_24_filled),
-          //     material: (context, platform) => MaterialIconButtonData(
-          //           tooltip: t.profile.add.buttonText,
-          //         )),
-          Semantics(
-            key: const ValueKey("profile_add_button"),
-            label: t.pages.profiles.add,
-            child: IconButton(
-              icon: Icon(Icons.add_rounded, color: theme.colorScheme.primary),
-              onPressed: () => ref.read(bottomSheetsNotifierProvider.notifier).showAddProfile(),
-            ),
-          ),
-          const Gap(8),
-        ],
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -97,16 +75,47 @@ class HomePage extends HookConsumerWidget {
                   slivers: [
                     // switch (activeProfile) {
                     // AsyncData(value: final profile?) =>
+                    if (!(ref.watch(hasAnyProfileProvider).value ?? true)) const EmptyProfilesHomeBody(),
+                    if (ref.watch(hasAnyProfileProvider).value ?? true)
                     MultiSliver(
                       children: [
                         // const Gap(100),
                         switch (activeProfile) {
-                          AsyncData(value: final profile?) => ProfileTile(
-                            profile: profile,
-                            isMain: true,
+                          AsyncData(value: final profile?) => SliverToBoxAdapter(child: Card(
                             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          ),
-                          _ => const Text(""),
+                            child: ListTile(
+                              leading: const Icon(Icons.verified_user_rounded),
+                              title: Text(profile.name),
+                              subtitle: Text(_subtitulo(profile)),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Actualizar',
+                                    icon: const Icon(Icons.refresh_rounded),
+                                    onPressed: () =>
+                                        ref.read(foregroundProfilesUpdateNotifierProvider.notifier).trigger(),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Cambiar suscripción',
+                                    icon: const Icon(Icons.delete_outline_rounded),
+                                    onPressed: () async {
+                                      final ok = await ref
+                                          .read(dialogNotifierProvider.notifier)
+                                          .showConfirmation(
+                                            title: 'Cambiar suscripción',
+                                            message: 'Se quitará esta suscripción y podrás ingresar otra. ¿Continuar?',
+                                          );
+                                      if (ok) {
+                                        await ref.read(profilesNotifierProvider.notifier).deleteProfile(profile);
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )),
+                          _ => const SliverToBoxAdapter(),
                         },
                         const SliverFillRemaining(
                           hasScrollBody: false,
@@ -120,7 +129,6 @@ class HomePage extends HookConsumerWidget {
                                   children: [ConnectionButton(), ActiveProxyDelayIndicator()],
                                 ),
                               ),
-                              ActiveProxyFooter(),
                               Gap(32),
                             ],
                           ),
@@ -138,43 +146,6 @@ class HomePage extends HookConsumerWidget {
                 ),
               ),
             ),
-            if (ref.watch(hasAnyProfileProvider).value ?? false)
-              Positioned(
-                right: 0,
-                left: 0,
-                bottom: 0,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Material(
-                      color: theme.colorScheme.primaryContainer,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        topRight: Radius.circular(16),
-                      ),
-                      child: InkWell(
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(16),
-                          topRight: Radius.circular(16),
-                        ),
-                        onTap: () => ref.read(bottomSheetsNotifierProvider.notifier).showQuickSettings(),
-                        child: Container(
-                          height: 32,
-                          padding: const EdgeInsetsDirectional.only(start: 16, end: 8),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(t.pages.home.quickSettings),
-                              const Gap(4),
-                              const Icon(Icons.arrow_drop_up_rounded, size: 16),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
           ],
         ),
       ),
@@ -207,4 +178,19 @@ class AppVersionLabel extends HookConsumerWidget {
       ),
     );
   }
+}
+
+String _gb(int bytes) => '${(bytes / 1073741824).toStringAsFixed(1)} GB';
+
+String _subtitulo(ProfileEntity profile) {
+  if (profile is RemoteProfileEntity) {
+    final info = profile.subInfo;
+    if (info != null) {
+      final datos = info.total > 0 ? 'Quedan ${_gb(info.remainingBW < 0 ? 0 : info.remainingBW)}' : 'Datos ilimitados';
+      final dias = info.remaining.inDays;
+      final vence = info.isExpired ? 'Vencida' : 'Vence en $dias días';
+      return '$datos · $vence';
+    }
+  }
+  return 'Suscripción activa';
 }
