@@ -6,6 +6,7 @@ import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/features/home/widget/connection_button.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
 import 'package:hiddify/features/home/widget/empty_profiles_home_body.dart';
+import 'package:hiddify/features/home/widget/settings_sheet.dart';
 import 'package:hiddify/features/profile/notifier/profiles_update_notifier.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
@@ -48,6 +49,18 @@ class HomePage extends HookConsumerWidget {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Ajustes',
+            icon: const Icon(Icons.settings_rounded),
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              builder: (_) => const SettingsSheet(),
+            ),
+          ),
+          const Gap(8),
+        ],
       ),
       body: Container(
         decoration: BoxDecoration(

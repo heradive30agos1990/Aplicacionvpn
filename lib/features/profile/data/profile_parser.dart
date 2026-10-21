@@ -365,6 +365,14 @@ class ProfileParser with InfraLogger {
             name = titleHeader.trim();
           }
         }
+        // Sin título en la cabecera: usa el nombre (remark) de la primera configuración del servidor.
+        if (name.isBlank && profile is RemoteProfileEntity) {
+          try {
+            final remark = protocol(File(tempFilePath).readAsStringSync()).trim();
+            final esGenerico = ProxyType.values.any((t) => t.label == remark);
+            if (remark.isNotEmpty && !esGenerico) name = remark;
+          } catch (_) {}
+        }
         if (headers['content-disposition'] case final String contentDispositionHeader when name.isBlank) {
           name = filenameFromContentDisposition(contentDispositionHeader);
         }

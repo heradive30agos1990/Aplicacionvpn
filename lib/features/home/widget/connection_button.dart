@@ -208,7 +208,7 @@ class _ConnectionButton extends HookWidget {
                     focusColor: Colors.grey,
                     onTap: onTap,
                     child: Padding(
-                      padding: const EdgeInsets.all(36),
+                      padding: const EdgeInsets.all(18),
                       child: AnimatedOpacity(
                         opacity: look == _Look.loading ? .38 : 1,
                         duration: const Duration(milliseconds: 300),
@@ -216,11 +216,23 @@ class _ConnectionButton extends HookWidget {
                           tween: ColorTween(end: buttonColor),
                           duration: const Duration(milliseconds: 250),
                           builder: (context, value, child) {
-                            if (useImage) {
-                              return image.image();
-                            } else {
-                              return Assets.images.logo.svg(colorFilter: ColorFilter.mode(value!, BlendMode.srcIn));
-                            }
+                            // Tu logo: a todo color cuando está conectado, en gris cuando no.
+                            final logo = Image.asset('assets/images/source/ic_launcher_border.png');
+                            final conectado =
+                                look == _Look.connected || look == _Look.noPing || look == _Look.hotReloading;
+                            if (conectado) return logo;
+                            return Opacity(
+                              opacity: .55,
+                              child: ColorFiltered(
+                                colorFilter: const ColorFilter.matrix(<double>[
+                                  0.2126, 0.7152, 0.0722, 0, 0, //
+                                  0.2126, 0.7152, 0.0722, 0, 0, //
+                                  0.2126, 0.7152, 0.0722, 0, 0, //
+                                  0, 0, 0, 1, 0,
+                                ]),
+                                child: logo,
+                              ),
+                            );
                           },
                         ),
                       ),
