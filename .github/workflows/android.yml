@@ -57,20 +57,12 @@ jobs:
           KEY_PASS: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
         run: |
-          printf '%s' "$KEY_B64" | tr -d ' 
-' | base64 --decode > android/key.jks
-          SP=$(printf '%s' "$STORE_PASS" | tr -d ' 
-')
-          KP=$(printf '%s' "$KEY_PASS" | tr -d ' 
-')
-          KA=$(printf '%s' "$KEY_ALIAS" | tr -d ' 
-')
+          printf '%s' "$KEY_B64" | tr -d ' \r\n' | base64 --decode > android/key.jks
+          SP=$(printf '%s' "$STORE_PASS" | tr -d ' \r\n')
+          KP=$(printf '%s' "$KEY_PASS" | tr -d ' \r\n')
+          KA=$(printf '%s' "$KEY_ALIAS" | tr -d ' \r\n')
           keytool -list -keystore android/key.jks -storepass "$SP" -alias "$KA"
-          printf 'storeFile=%s
-storePassword=%s
-keyPassword=%s
-keyAlias=%s
-' "$(pwd)/android/key.jks" "$SP" "$KP" "$KA" > android/key.properties
+          printf 'storeFile=%s\nstorePassword=%s\nkeyPassword=%s\nkeyAlias=%s\n' "$(pwd)/android/key.jks" "$SP" "$KP" "$KA" > android/key.properties
 
       - name: Usar el ícono propio (quitar íconos adaptables antiguos)
         run: |
