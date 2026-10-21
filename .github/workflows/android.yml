@@ -58,8 +58,10 @@ jobs:
           echo "keyPassword=${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}" >> android/key.properties
           echo "keyAlias=${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}" >> android/key.properties
 
-      - name: Usar el ícono propio (quitar íconos adaptables antiguos)
-        run: rm -rf android/app/src/main/res/mipmap-anydpi* || true
+           - name: Usar el ícono propio (quitar íconos adaptables antiguos)
+           run: |
+           rm -rf android/app/src/main/res/mipmap-anydpi* || true
+           rm -f android/app/src/main/res/mipmap-*/ic_launcher.webp android/app/src/main/res/mipmap-*/ic_launcher_round.webp || true
 
       - name: Preparar
         run: make android-apk-prepare
