@@ -1,0 +1,80 @@
+name: Android APK
+on:
+  workflow_dispatch:
+
+env:
+  IS_GITHUB_ACTIONS: 1
+  FLUTTER_VERSION: '3.38.5'
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: subosito/flutter-action@v2.21.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Liberar espacio
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          rm -rf ~/.gradle/caches
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Dependencias
+        run: |
+          make android-apk-install-deps
+          echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
+
+      - name: Firma del APK
+        run: |
+          echo "${{ secrets.ANDROID_SIGNING_KEY }}" | base64 --decode > android/key.jks
+          echo "storeFile=$(pwd)/android/key.jks" > android/key.properties
+          echo "storePassword=${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}" >> android/key.properties
+          echo "keyPassword=${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}" >> android/key.properties
+
+      - name: Usar el ícono propio (quitar íconos adaptables antiguos)
+        run: rm -rf android/app/src/main/res/mipmap-anydpi* || true
+
+      - name: Preparar
+        run: make android-apk-prepare
+
+      - name: Compilar
+        run: make android-apk-release
+
+      - name: Reunir APK
+        run: |
+          mkdir out
+          cp ./build/app/outputs/flutter-apk/*arm64-v8a*.apk out/App-arm64.apk || echo "sin arm64"
+          cp ./build/app/outputs/flutter-apk/app-release.apk out/App-universal.apk || echo "sin universal"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: apk
+          path: ./out
+          retention-days: 14
