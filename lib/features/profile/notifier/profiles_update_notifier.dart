@@ -32,7 +32,7 @@ void _setInfo(String text, {bool ok = true}) => syncInfo.value = (time: DateTime
 ///   si sigue sin internet, se desconecta sola.
 @Riverpod(keepAlive: true)
 class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifier with AppLogger {
-  static const watchInterval = Duration(seconds: 5);
+  static const watchInterval = Duration(seconds: 1);
   static const intervalPrefKey = "sub_check_seconds";
   static const defaultCheckSeconds = 15;
   static const loadedMessage = "Se cargó el servidor exitosamente";
@@ -157,12 +157,6 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
       return;
     }
 
-    // La configuración cambió: se desconecta antes de cargar la nueva.
-    if (changedIds.isNotEmpty && ref.read(serviceRunningProvider)) {
-      loggy.info("la configuración cambió, desconectando");
-      await ref.read(connectionNotifierProvider.notifier).abortConnection();
-    }
-
     var ok = 0;
     var failed = 0;
     // En fila a propósito: el núcleo nativo no soporta llamadas al mismo tiempo.
@@ -188,6 +182,17 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
     if (ok > 0) {
       _setInfo(changedIds.isNotEmpty ? "Servidor actualizado" : "Actualizada");
       notification.showSuccessToast(loadedMessage);
+      // La configuración cambió: 5 segundos después de cargarla, se desconecta.
+      if (changedIds.isNotEmpty && ref.read(serviceRunningProvider)) {
+        unawaited(
+          Future<void>.delayed(const Duration(seconds: 5), () async {
+            if (ref.read(serviceRunningProvider)) {
+              loggy.info("configuración cambiada, desconectando");
+              await ref.read(connectionNotifierProvider.notifier).abortConnection();
+            }
+          }),
+        );
+      }
     } else if (failed > 0) {
       _setInfo("No se pudo cargar", ok: false);
       notification.showErrorToast("No se pudo cargar el servidor.");
