@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- El logo tiene margen transparente (~56% del lienzo) para que quede dentro
-     de la zona segura circular que Android 12+ usa en el splash y no se recorte. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <bitmap android:gravity="center" android:src="@drawable/splash_logo" />
+    <item android:width="128dp" android:height="128dp" android:gravity="center">
+        <bitmap android:gravity="fill" android:src="@drawable/splash_logo" />
     </item>
 </layer-list>

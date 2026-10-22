@@ -191,8 +191,12 @@ class _PerfilCard extends HookConsumerWidget {
     String vence = '';
     if (profile is RemoteProfileEntity) {
       final si = (profile as RemoteProfileEntity).subInfo;
-      if (si != null && si.expire.millisecondsSinceEpoch > 0 && si.total >= 0) {
-        vence = si.isExpired ? 'Vencida' : 'Vence en ${si.remaining.inDays} días';
+      // Sin fecha de vencimiento el servidor manda 0 y la app lo guarda como año ~4900: no se muestra nada.
+      if (si != null && si.expire.year > 2000 && si.expire.year < 2100) {
+        final e = si.expire.toLocal();
+        final fecha =
+            '${e.day.toString().padLeft(2, '0')}/${e.month.toString().padLeft(2, '0')}/${e.year}';
+        vence = si.isExpired ? 'Venció el $fecha' : 'Vence el $fecha (${si.remaining.inDays} días)';
       }
     }
     const blanco = Colors.white;
