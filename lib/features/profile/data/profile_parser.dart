@@ -368,9 +368,8 @@ class ProfileParser with InfraLogger {
         // Sin título en la cabecera: usa el nombre (remark) de la primera configuración del servidor.
         if (name.isBlank && profile is RemoteProfileEntity) {
           try {
-            final remark = protocol(File(tempFilePath).readAsStringSync()).trim();
-            final esGenerico = ProxyType.values.any((t) => t.label == remark);
-            if (remark.isNotEmpty && !esGenerico) name = remark;
+            final remark = remarkDelServidor(File(tempFilePath).readAsStringSync());
+            if (remark.isNotEmpty) name = remark;
           } catch (_) {}
         }
         if (headers['content-disposition'] case final String contentDispositionHeader when name.isBlank) {
@@ -440,6 +439,48 @@ class ProfileParser with InfraLogger {
           local: (lp) => lp.copyWith(name: name, lastUpdate: DateTime.now()),
         );
       }, ProfileFailure.unexpected);
+
+  /// Nombre (remark) de la primera configuración del servidor; '' si no se encuentra.
+  /// Acepta enlaces en texto plano o la lista completa codificada en base64 (como entrega 3x-ui).
+  static String remarkDelServidor(String content) {
+    String? buscar(String text) {
+      for (final raw in text.split(RegExp(r'[\r\n]+'))) {
+        final line = raw.trim();
+        if (!line.contains('://')) continue;
+        if (line.startsWith('vmess://')) {
+          try {
+            var b = line.substring(8).trim().replaceAll('-', '+').replaceAll('_', '/');
+            while (b.length % 4 != 0) {
+              b += '=';
+            }
+            final ps = (jsonDecode(utf8.decode(base64.decode(b))) as Map)['ps'];
+            if (ps is String && ps.trim().isNotEmpty) return ps.trim();
+          } catch (_) {}
+          continue;
+        }
+        final i = line.indexOf('#');
+        if (i >= 0 && i < line.length - 1) {
+          try {
+            final r = Uri.decodeComponent(line.substring(i + 1)).split(' -> ')[0].trim();
+            if (r.isNotEmpty) return r;
+          } catch (_) {}
+        }
+      }
+      return null;
+    }
+
+    final directo = buscar(content);
+    if (directo != null) return directo;
+    try {
+      var b = content.replaceAll(RegExp(r'\s'), '').replaceAll('-', '+').replaceAll('_', '/');
+      while (b.length % 4 != 0) {
+        b += '=';
+      }
+      return buscar(utf8.decode(base64.decode(b))) ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
 
   static String protocol(String content) {
     if (content.contains("[Interface]")) {

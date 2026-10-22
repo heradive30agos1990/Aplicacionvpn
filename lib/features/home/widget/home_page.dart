@@ -180,7 +180,6 @@ class _PerfilCard extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final cs = theme.colorScheme;
     // refresca el "hace X s" cada segundo
     final tick = useState(0);
     useEffect(() {
@@ -189,34 +188,34 @@ class _PerfilCard extends HookConsumerWidget {
     }, const []);
     final info = useValueListenable(syncInfo);
 
-    double? progreso;
-    String datos = 'Suscripción activa';
     String vence = '';
     if (profile is RemoteProfileEntity) {
       final si = (profile as RemoteProfileEntity).subInfo;
-      if (si != null) {
-        if (si.total > 0) {
-          final usado = si.upload + si.download;
-          progreso = (usado / si.total).clamp(0.0, 1.0).toDouble();
-          datos = '${_gb(si.remainingBW < 0 ? 0 : si.remainingBW)} disponibles de ${_gb(si.total)}';
-        } else {
-          datos = 'Datos ilimitados';
-        }
-        vence = si.isExpired ? 'Vencida' : 'Vence en ${si.remaining.inDays} días';
+      // Sin fecha de vencimiento el servidor manda 0 y la app lo guarda como año ~4900: no se muestra nada.
+      if (si != null && si.expire.year > 2000 && si.expire.year < 2100) {
+        final e = si.expire.toLocal();
+        final fecha =
+            '${e.day.toString().padLeft(2, '0')}/${e.month.toString().padLeft(2, '0')}/${e.year}';
+        vence = si.isExpired ? 'Venció el $fecha' : 'Vence el $fecha (${si.remaining.inDays} días)';
       }
     }
+    const blanco = Colors.white;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [cs.primaryContainer, cs.secondaryContainer],
+          colors: [Color(0xFF00E5FF), Color(0xFF2979FF), Color(0xFF9C27FF), Color(0xFFFF2DAA)],
         ),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .15), blurRadius: 12, offset: const Offset(0, 4))],
+        border: Border.all(color: Colors.white.withValues(alpha: .55), width: 1.5),
+        boxShadow: [
+          BoxShadow(color: const Color(0xFF00E5FF).withValues(alpha: .55), blurRadius: 22, offset: const Offset(-4, 4)),
+          BoxShadow(color: const Color(0xFFFF2DAA).withValues(alpha: .45), blurRadius: 22, offset: const Offset(4, 6)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -224,8 +223,8 @@ class _PerfilCard extends HookConsumerWidget {
           Row(
             children: [
               CircleAvatar(
-                backgroundColor: cs.primary,
-                child: Icon(Icons.verified_user_rounded, color: cs.onPrimary),
+                backgroundColor: Colors.white.withValues(alpha: .25),
+                child: const Icon(Icons.verified_user_rounded, color: blanco),
               ),
               const Gap(12),
               Expanded(
@@ -234,19 +233,21 @@ class _PerfilCard extends HookConsumerWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: cs.onPrimaryContainer,
+                    fontWeight: FontWeight.w800,
+                    color: blanco,
+                    shadows: const [Shadow(color: Colors.black38, blurRadius: 6)],
                   ),
                 ),
               ),
-              IconButton.filledTonal(
+              IconButton.filled(
+                style: IconButton.styleFrom(backgroundColor: Colors.white.withValues(alpha: .28), foregroundColor: blanco),
                 tooltip: 'Actualizar',
                 icon: const Icon(Icons.refresh_rounded),
                 onPressed: () => ref.read(foregroundProfilesUpdateNotifierProvider.notifier).trigger(),
               ),
               IconButton(
                 tooltip: 'Cambiar suscripción',
-                icon: const Icon(Icons.delete_outline_rounded),
+                icon: const Icon(Icons.delete_outline_rounded, color: blanco),
                 onPressed: () async {
                   final ok = await ref
                       .read(dialogNotifierProvider.notifier)
@@ -261,28 +262,13 @@ class _PerfilCard extends HookConsumerWidget {
               ),
             ],
           ),
-          const Gap(14),
-          if (progreso != null) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(value: progreso, minHeight: 8),
-            ),
-            const Gap(8),
-          ],
-          Row(
-            children: [
-              const Icon(Icons.data_usage_rounded, size: 16),
-              const Gap(6),
-              Expanded(child: Text(datos, style: theme.textTheme.bodyMedium)),
-            ],
-          ),
           if (vence.isNotEmpty) ...[
             const Gap(4),
             Row(
               children: [
-                const Icon(Icons.event_rounded, size: 16),
+                const Icon(Icons.event_rounded, size: 16, color: blanco),
                 const Gap(6),
-                Text(vence, style: theme.textTheme.bodyMedium),
+                Text(vence, style: theme.textTheme.bodyMedium?.copyWith(color: blanco)),
               ],
             ),
           ],
@@ -293,13 +279,13 @@ class _PerfilCard extends HookConsumerWidget {
                 Icon(
                   info.ok ? Icons.sync_rounded : Icons.sync_problem_rounded,
                   size: 16,
-                  color: info.ok ? null : cs.error,
+                  color: info.ok ? blanco : Colors.yellowAccent,
                 ),
                 const Gap(6),
                 Expanded(
                   child: Text(
                     'Revisada ${_hace(info.time)} · ${info.text}',
-                    style: theme.textTheme.bodySmall?.copyWith(color: info.ok ? null : cs.error),
+                    style: theme.textTheme.bodySmall?.copyWith(color: info.ok ? blanco : Colors.yellowAccent),
                   ),
                 ),
               ],
