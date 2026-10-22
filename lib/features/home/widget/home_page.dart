@@ -1,5 +1,8 @@
 import 'package:dartx/dartx.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:hiddify/core/app_info/app_info_provider.dart';
 import 'package:hiddify/core/localization/translations.dart';
@@ -94,40 +97,7 @@ class HomePage extends HookConsumerWidget {
                       children: [
                         // const Gap(100),
                         switch (activeProfile) {
-                          AsyncData(value: final profile?) => SliverToBoxAdapter(child: Card(
-                            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            child: ListTile(
-                              leading: const Icon(Icons.verified_user_rounded),
-                              title: Text(profile.name),
-                              subtitle: Text(_subtitulo(profile)),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    tooltip: 'Actualizar',
-                                    icon: const Icon(Icons.refresh_rounded),
-                                    onPressed: () =>
-                                        ref.read(foregroundProfilesUpdateNotifierProvider.notifier).trigger(),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Cambiar suscripción',
-                                    icon: const Icon(Icons.delete_outline_rounded),
-                                    onPressed: () async {
-                                      final ok = await ref
-                                          .read(dialogNotifierProvider.notifier)
-                                          .showConfirmation(
-                                            title: 'Cambiar suscripción',
-                                            message: 'Se quitará esta suscripción y podrás ingresar otra. ¿Continuar?',
-                                          );
-                                      if (ok) {
-                                        await ref.read(profilesNotifierProvider.notifier).deleteProfile(profile);
-                                      }
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )),
+                          AsyncData(value: final profile?) => SliverToBoxAdapter(child: _PerfilCard(profile: profile)),
                           _ => const SliverToBoxAdapter(),
                         },
                         const SliverFillRemaining(
@@ -193,17 +163,150 @@ class AppVersionLabel extends HookConsumerWidget {
   }
 }
 
-String _gb(int bytes) => '${(bytes / 1073741824).toStringAsFixed(1)} GB';
+String _gb(num bytes) => '${(bytes / 1073741824).toStringAsFixed(1)} GB';
 
-String _subtitulo(ProfileEntity profile) {
-  if (profile is RemoteProfileEntity) {
-    final info = profile.subInfo;
-    if (info != null) {
-      final datos = info.total > 0 ? 'Quedan ${_gb(info.remainingBW < 0 ? 0 : info.remainingBW)}' : 'Datos ilimitados';
-      final dias = info.remaining.inDays;
-      final vence = info.isExpired ? 'Vencida' : 'Vence en $dias días';
-      return '$datos · $vence';
+String _hace(DateTime t) {
+  final d = DateTime.now().difference(t).inSeconds;
+  if (d < 5) return 'ahora mismo';
+  if (d < 60) return 'hace $d s';
+  if (d < 3600) return 'hace ${d ~/ 60} min';
+  return 'hace ${d ~/ 3600} h';
+}
+
+class _PerfilCard extends HookConsumerWidget {
+  const _PerfilCard({required this.profile});
+  final ProfileEntity profile;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    // refresca el "hace X s" cada segundo
+    final tick = useState(0);
+    useEffect(() {
+      final timer = Timer.periodic(const Duration(seconds: 1), (_) => tick.value++);
+      return timer.cancel;
+    }, const []);
+    final info = useValueListenable(syncInfo);
+
+    double? progreso;
+    String datos = 'Suscripción activa';
+    String vence = '';
+    if (profile is RemoteProfileEntity) {
+      final si = (profile as RemoteProfileEntity).subInfo;
+      if (si != null) {
+        if (si.total > 0) {
+          final usado = si.upload + si.download;
+          progreso = (usado / si.total).clamp(0.0, 1.0).toDouble();
+          datos = '${_gb(si.remainingBW < 0 ? 0 : si.remainingBW)} disponibles de ${_gb(si.total)}';
+        } else {
+          datos = 'Datos ilimitados';
+        }
+        vence = si.isExpired ? 'Vencida' : 'Vence en ${si.remaining.inDays} días';
+      }
     }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [cs.primaryContainer, cs.secondaryContainer],
+        ),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .15), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: cs.primary,
+                child: Icon(Icons.verified_user_rounded, color: cs.onPrimary),
+              ),
+              const Gap(12),
+              Expanded(
+                child: Text(
+                  profile.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: cs.onPrimaryContainer,
+                  ),
+                ),
+              ),
+              IconButton.filledTonal(
+                tooltip: 'Actualizar',
+                icon: const Icon(Icons.refresh_rounded),
+                onPressed: () => ref.read(foregroundProfilesUpdateNotifierProvider.notifier).trigger(),
+              ),
+              IconButton(
+                tooltip: 'Cambiar suscripción',
+                icon: const Icon(Icons.delete_outline_rounded),
+                onPressed: () async {
+                  final ok = await ref
+                      .read(dialogNotifierProvider.notifier)
+                      .showConfirmation(
+                        title: 'Cambiar suscripción',
+                        message: 'Se quitará esta suscripción y podrás ingresar otra. ¿Continuar?',
+                      );
+                  if (ok) {
+                    await ref.read(profilesNotifierProvider.notifier).deleteProfile(profile);
+                  }
+                },
+              ),
+            ],
+          ),
+          const Gap(14),
+          if (progreso != null) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(value: progreso, minHeight: 8),
+            ),
+            const Gap(8),
+          ],
+          Row(
+            children: [
+              const Icon(Icons.data_usage_rounded, size: 16),
+              const Gap(6),
+              Expanded(child: Text(datos, style: theme.textTheme.bodyMedium)),
+            ],
+          ),
+          if (vence.isNotEmpty) ...[
+            const Gap(4),
+            Row(
+              children: [
+                const Icon(Icons.event_rounded, size: 16),
+                const Gap(6),
+                Text(vence, style: theme.textTheme.bodyMedium),
+              ],
+            ),
+          ],
+          if (info != null) ...[
+            const Gap(10),
+            Row(
+              children: [
+                Icon(
+                  info.ok ? Icons.sync_rounded : Icons.sync_problem_rounded,
+                  size: 16,
+                  color: info.ok ? null : cs.error,
+                ),
+                const Gap(6),
+                Expanded(
+                  child: Text(
+                    'Revisada ${_hace(info.time)} · ${info.text}',
+                    style: theme.textTheme.bodySmall?.copyWith(color: info.ok ? null : cs.error),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
   }
-  return 'Suscripción activa';
 }

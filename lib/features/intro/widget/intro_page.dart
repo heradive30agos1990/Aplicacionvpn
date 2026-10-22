@@ -15,18 +15,27 @@ class IntroPage extends HookConsumerWidget with PresLogger {
     final isStarting = useState(false);
 
     return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset('assets/images/source/ic_launcher_border.png', width: 200, height: 200),
-              const Gap(24),
-              Text('Internet Ilimitado', style: theme.textTheme.headlineMedium),
-              const Gap(8),
-              Text('Conéctate con tu suscripción', style: theme.textTheme.bodyLarge),
-            ],
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 96),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 280, maxHeight: 280),
+                  child: Image.asset(
+                    'assets/images/source/ic_launcher_border.png',
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                  ),
+                ),
+                const Gap(24),
+                Text('Internet Ilimitado', style: theme.textTheme.headlineMedium, textAlign: TextAlign.center),
+                const Gap(8),
+                Text('Conéctate con tu suscripción', style: theme.textTheme.bodyLarge, textAlign: TextAlign.center),
+              ],
+            ),
           ),
         ),
       ),

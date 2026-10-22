@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hiddify/core/http_client/http_client_provider.dart';
 import 'package:hiddify/core/model/constants.dart';
 import 'package:hiddify/core/notification/in_app_notification_controller.dart';
@@ -10,12 +13,16 @@ import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/notifier/profile_notifier.dart';
 import 'package:hiddify/features/proxy/active/active_proxy_notifier.dart';
 import 'package:hiddify/utils/custom_loggers.dart';
-import 'package:neat_periodic_task/neat_periodic_task.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'profiles_update_notifier.g.dart';
 
 typedef ProfileUpdateStatus = ({String name, bool success});
+
+/// Estado visible de la última revisión (lo muestra la tarjeta de la suscripción).
+typedef SyncInfo = ({DateTime time, String text, bool ok});
+final ValueNotifier<SyncInfo?> syncInfo = ValueNotifier<SyncInfo?>(null);
+void _setInfo(String text, {bool ok = true}) => syncInfo.value = (time: DateTime.now(), text: text, ok: ok);
 
 /// Vigila la suscripción del servidor:
 /// - Cada X segundos (se elige en Ajustes) descarga la suscripción y la compara con la anterior.
@@ -33,28 +40,23 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
 
   @override
   Stream<ProfileUpdateStatus?> build() {
-    _watcher = NeatPeriodicTaskScheduler(
-      name: 'profiles change watcher',
-      interval: watchInterval,
-      timeout: const Duration(minutes: 3),
-      task: () async => await _tick(),
-    );
-
-    ref.onDispose(() async {
-      await _watcher?.stop();
-      _watcher = null;
+    ref.onDispose(() {
+      _timer?.cancel();
+      _timer = null;
     });
 
     if (ref.watch(Preferences.introCompleted)) {
       loggy.debug("intro done, starting");
-      _watcher?.start();
+      _timer = Timer.periodic(watchInterval, (_) => _tick());
+      Timer(const Duration(seconds: 2), _tick);
     } else {
       loggy.debug("intro in process, skipping");
     }
     return const Stream.empty();
   }
 
-  NeatPeriodicTaskScheduler? _watcher;
+  Timer? _timer;
+  DateTime? _busySince;
   final Map<String, String> _lastBody = {};
   DateTime? _lastCheck;
   bool _busy = false;
@@ -62,33 +64,48 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
   // La primera revisión después de abrir la app se hace enseguida.
   bool _firstRun = true;
 
-  /// Botón "actualizar": revisa ya, sin esperar el tiempo elegido.
+  /// Botón "actualizar": siempre vuelve a cargar la suscripción, sin esperar el tiempo elegido.
   Future<void> trigger() async {
     _forceNext = true;
-    await _tick();
+    await _tick(manual: true);
   }
 
-  Future<void> _tick() async {
+  Future<void> _tick({bool manual = false}) async {
     final seconds = ref.read(sharedPreferencesProvider).requireValue.getInt(intervalPrefKey) ?? defaultCheckSeconds;
     final now = DateTime.now();
-    final force = _forceNext || _firstRun;
+    final force = manual || _firstRun;
     final last = _lastCheck;
     if (!force && last != null && now.difference(last) < Duration(seconds: seconds)) return;
-    if (_busy) return;
+    if (_busy) {
+      // Si una revisión quedó colgada más de 2 minutos, se libera.
+      final since = _busySince;
+      if (since != null && now.difference(since) > const Duration(minutes: 2)) {
+        _busy = false;
+      } else {
+        if (manual) _setInfo("Ya se está revisando…");
+        return;
+      }
+    }
     _busy = true;
+    _busySince = now;
     _lastCheck = now;
     _forceNext = false;
     _firstRun = false;
     try {
-      await _sync(force: force);
+      _setInfo("Revisando…");
+      await _sync(manual: manual).timeout(const Duration(seconds: 90));
+    } on TimeoutException {
+      _setInfo("La revisión tardó demasiado", ok: false);
+      if (manual) ref.read(inAppNotificationControllerProvider).showErrorToast("No se pudo cargar el servidor.");
     } catch (e) {
       loggy.warning("sync failed: $e");
+      _setInfo("Error al revisar", ok: false);
     } finally {
       _busy = false;
     }
   }
 
-  Future<void> _sync({required bool force}) async {
+  Future<void> _sync({required bool manual}) async {
     final profiles = await ref
         .read(profileRepositoryProvider)
         .requireValue
@@ -106,7 +123,7 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
     for (final profile in profiles) {
       String body;
       try {
-        final response = await client.get<String>(profile.url, responseType: ResponseType.plain);
+        final response = await client.get<String>(_noCache(profile.url), responseType: ResponseType.plain);
         body = response.data ?? '';
       } catch (e) {
         loggy.debug("no se pudo descargar la suscripción: $e");
@@ -120,14 +137,15 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
       if (changed) {
         changedIds.add(profile.id);
         toUpdate.add(profile);
-      } else if (force && !ref.read(serviceRunningProvider)) {
-        // sin conexión activa: aprovecha para refrescar nombre y datos
+      } else if (manual) {
+        // actualización manual: siempre recarga (si está conectado, sin cortar el túnel)
         toUpdate.add(profile);
       }
     }
 
     // No se pudo descargar nada y la app está conectada: ¿hay internet?
     if (downloadFailed && !downloadedAny && ref.read(serviceRunningProvider)) {
+      _setInfo("Sin conexión", ok: false);
       await _disconnectIfNoInternet();
       return;
     }
@@ -135,7 +153,7 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
     final notification = ref.read(inAppNotificationControllerProvider);
 
     if (toUpdate.isEmpty) {
-      if (force && downloadedAny) notification.showSuccessToast("La suscripción está al día");
+      _setInfo(downloadedAny ? "Sin cambios" : "Sin conexión", ok: downloadedAny);
       return;
     }
 
@@ -149,7 +167,16 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
     var failed = 0;
     // En fila a propósito: el núcleo nativo no soporta llamadas al mismo tiempo.
     for (final profile in toUpdate) {
-      await ref.read(updateProfileNotifierProvider(profile.id).notifier).updateProfile(profile, isBulk: true);
+      // Evita que un estado "cargando" viejo bloquee la actualización.
+      ref.invalidate(updateProfileNotifierProvider(profile.id));
+      try {
+        await ref
+            .read(updateProfileNotifierProvider(profile.id).notifier)
+            .updateProfile(profile, isBulk: true)
+            .timeout(const Duration(seconds: 60));
+      } catch (e) {
+        loggy.warning("updateProfile falló: $e");
+      }
       if (ref.read(updateProfileNotifierProvider(profile.id)).hasError) {
         failed++;
         _lastBody.remove(profile.id); // se reintenta en la próxima revisión
@@ -159,10 +186,19 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
     }
 
     if (ok > 0) {
+      _setInfo(changedIds.isNotEmpty ? "Servidor actualizado" : "Actualizada");
       notification.showSuccessToast(loadedMessage);
     } else if (failed > 0) {
+      _setInfo("No se pudo cargar", ok: false);
       notification.showErrorToast("No se pudo cargar el servidor.");
     }
+  }
+
+  /// Agrega un parámetro cambiante para que ningún intermediario devuelva una copia vieja.
+  String _noCache(String url) {
+    final u = Uri.tryParse(url.trim());
+    if (u == null) return url;
+    return u.replace(queryParameters: {...u.queryParameters, '_t': DateTime.now().millisecondsSinceEpoch.toString()}).toString();
   }
 
   /// Comprueba el internet por el túnel durante 20 s. Si no hay, se desconecta sola.
