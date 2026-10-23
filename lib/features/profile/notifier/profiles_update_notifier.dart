@@ -47,7 +47,15 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
 
     if (ref.watch(Preferences.introCompleted)) {
       loggy.debug("intro done, starting");
-      _timer = Timer.periodic(watchInterval, (_) => _tick());
+      _timer = Timer.periodic(watchInterval, (_) {
+        // Al abrir la app: en cuanto la VPN esté conectada, se actualiza la suscripción una vez.
+        if (_pendingOpen && !_busy && ref.read(serviceRunningProvider)) {
+          _pendingOpen = false;
+          _tick(alAbrir: true);
+        } else {
+          _tick();
+        }
+      });
       Timer(const Duration(seconds: 2), _tick);
     } else {
       loggy.debug("intro in process, skipping");
@@ -61,6 +69,7 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
   DateTime? _lastCheck;
   bool _busy = false;
   bool _forceNext = false;
+  bool _pendingOpen = true;
   // La primera revisión después de abrir la app se hace enseguida.
   bool _firstRun = true;
 
@@ -70,10 +79,10 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
     await _tick(manual: true);
   }
 
-  Future<void> _tick({bool manual = false}) async {
+  Future<void> _tick({bool manual = false, bool alAbrir = false}) async {
     final seconds = ref.read(sharedPreferencesProvider).requireValue.getInt(intervalPrefKey) ?? defaultCheckSeconds;
     final now = DateTime.now();
-    final force = manual || _firstRun;
+    final force = manual || alAbrir || _firstRun;
     final last = _lastCheck;
     if (!force && last != null && now.difference(last) < Duration(seconds: seconds)) return;
     if (_busy) {
@@ -93,7 +102,7 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
     _firstRun = false;
     try {
       _setInfo("Revisando…");
-      await _sync(manual: manual).timeout(const Duration(seconds: 90));
+      await _sync(manual: manual || alAbrir, desconectar: !alAbrir).timeout(const Duration(seconds: 90));
     } on TimeoutException {
       _setInfo("La revisión tardó demasiado", ok: false);
       if (manual) ref.read(inAppNotificationControllerProvider).showErrorToast("No se pudo cargar el servidor.");
@@ -105,7 +114,7 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
     }
   }
 
-  Future<void> _sync({required bool manual}) async {
+  Future<void> _sync({required bool manual, bool desconectar = true}) async {
     final profiles = await ref
         .read(profileRepositoryProvider)
         .requireValue
@@ -182,7 +191,7 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
       _setInfo(changedIds.isNotEmpty ? "Servidor actualizado" : "Actualizada");
       notification.showSuccessToast(loadedMessage);
       // Cada vez que se carga la suscripción con la VPN conectada: 5 segundos después de cargarla, se desconecta.
-      if (ref.read(serviceRunningProvider)) {
+      if (desconectar && ref.read(serviceRunningProvider)) {
         unawaited(
           Future<void>.delayed(const Duration(seconds: 5), () async {
             if (ref.read(serviceRunningProvider)) {
