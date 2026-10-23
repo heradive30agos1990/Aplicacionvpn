@@ -56,19 +56,8 @@ class _WindowWrapperState extends ConsumerState<WindowWrapper> with WindowListen
       return;
     }
 
-    switch (ref.read(Preferences.actionAtClose)) {
-      case ActionsAtClosing.ask:
-        if (isWindowClosingDialogOpened) return;
-        isWindowClosingDialogOpened = true;
-        await ref.read(dialogNotifierProvider.notifier).showWindowClosing();
-        isWindowClosingDialogOpened = false;
-
-      case ActionsAtClosing.hide:
-        await ref.read(windowNotifierProvider.notifier).hide();
-
-      case ActionsAtClosing.exit:
-        await ref.read(windowNotifierProvider.notifier).exit();
-    }
+    // Al cerrar la ventana, la app se cierra por completo y la VPN se apaga.
+    await ref.read(windowNotifierProvider.notifier).exit();
   }
 
   @override
