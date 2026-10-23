@@ -41,6 +41,12 @@ class VPNService : VpnService(), PlatformInterfaceWrapper {
         service.onDestroy()
     }
 
+    // La app se cerró deslizándola desde aplicaciones recientes: se apaga la VPN.
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        BoxService.stop()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onRevoke() {
         runBlocking {
             withContext(Dispatchers.Main) {

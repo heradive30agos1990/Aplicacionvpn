@@ -15,6 +15,11 @@ class ProxyService :
 
     override fun onDestroy() = service.onDestroy()
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        BoxService.stop()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun sendNotification(notification: Notification) = service.sendNotification(notification)
 
     override fun cancelNotification(identifier: String, typeID: Int) = service.cancelNotification(identifier, typeID)

@@ -12,6 +12,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.lifecycleScope
+import com.hiddify.hiddify.bg.BoxService
 import com.hiddify.hiddify.bg.ServiceConnection
 import com.hiddify.hiddify.bg.ServiceNotification
 import com.hiddify.hiddify.constant.Alert
@@ -133,6 +134,10 @@ class MainActivity : FlutterFragmentActivity(), ServiceConnection.Callback {
 
 
     override fun onDestroy() {
+        // Si la app se cierra de verdad (no solo gira la pantalla), la VPN también se apaga.
+        if (isFinishing && serviceStatus.value == Status.Started) {
+            BoxService.stop()
+        }
         connection.disconnect()
         super.onDestroy()
     }
