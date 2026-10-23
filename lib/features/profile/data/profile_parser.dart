@@ -149,7 +149,38 @@ class ProfileParser with InfraLogger {
       )
       .flatMap((profEntity) => Either.tryCatch(() => profEntity.toUpdateEntry(), ProfileFailure.unexpected));
 
+  /// Configuración vacía que se carga cuando el servidor desactivó al cliente (como hace Happ):
+  /// la suscripción "carga bien", pero no hay servidor real y no da internet.
+  static const desactivadoRemark = 'Desactivado';
+  static const desactivadoLink =
+      'vless://00000000-0000-4000-8000-000000000000@127.0.0.1:1?encryption=none&security=none&type=tcp#$desactivadoRemark';
+
+  static bool _pareceVacia(String body) {
+    final t = body.trim();
+    if (t.isEmpty) return true;
+    // Respuestas tipo "Error!" o "Not found": muy cortas y sin ningún enlace.
+    return t.length < 40 && !t.contains('://');
+  }
+
   TaskEither<ProfileFailure, Map<String, dynamic>> _downloadProfile(
+    String url,
+    String tempFilePath,
+    CancelToken? cancelToken,
+  ) => TaskEither.tryCatch(() async {
+    try {
+      final h = await _downloadProfileRaw(url, tempFilePath, cancelToken).run();
+      final headers = h.getOrElse((f) => throw f);
+      final body = File(tempFilePath).existsSync() ? File(tempFilePath).readAsStringSync() : '';
+      if (_pareceVacia(body)) {
+        File(tempFilePath).writeAsStringSync(desactivadoLink);
+      }
+      return headers;
+    } on ProfileFailure {
+      rethrow;
+    }
+  }, (err, st) => err is ProfileFailure ? err : ProfileFailure.unexpected(err, st));
+
+  TaskEither<ProfileFailure, Map<String, dynamic>> _downloadProfileRaw(
     String url,
     String tempFilePath,
     CancelToken? cancelToken,
@@ -157,21 +188,28 @@ class ProfileParser with InfraLogger {
     // if (url.startsWith("http://"))
     //   throw const ProfileFailure.invalidUrl('HTTP is not supported. Please use HTTPS for secure connection.');
 
-    final rs = await _httpClient
-        .download(
-          url.trim(),
-          tempFilePath,
-          cancelToken: cancelToken,
-          userAgent: _ref.read(ConfigOptions.useXrayCoreWhenPossible)
-              ? _httpClient.userAgent.replaceAll("HiddifyNext", "HiddifyNextX")
-              : null,
-        )
-        .catchError((err) {
-          if (CancelToken.isCancel(err as DioException)) {
-            throw const ProfileFailure.cancelByUser('HTTP request for getting profile content canceled by user.');
-          }
-          throw err;
-        });
+    final Response rs;
+    try {
+      rs = await _httpClient.download(
+        url.trim(),
+        tempFilePath,
+        cancelToken: cancelToken,
+        userAgent: _ref.read(ConfigOptions.useXrayCoreWhenPossible)
+            ? _httpClient.userAgent.replaceAll("HiddifyNext", "HiddifyNextX")
+            : null,
+      );
+    } on DioException catch (err) {
+      if (CancelToken.isCancel(err)) {
+        throw const ProfileFailure.cancelByUser('HTTP request for getting profile content canceled by user.');
+      }
+      // El servidor respondió, pero rechazó la suscripción (cliente desactivado o borrado).
+      final code = err.response?.statusCode;
+      if (code == 400 || code == 401 || code == 403 || code == 404 || code == 410) {
+        File(tempFilePath).writeAsStringSync(desactivadoLink);
+        return <String, dynamic>{};
+      }
+      rethrow;
+    }
     // fixing headers before return
     return rs.headers.map.map((key, value) {
       if (value.length == 1) return MapEntry(key, value.first);
@@ -369,7 +407,11 @@ class ProfileParser with InfraLogger {
         if (name.isBlank && profile is RemoteProfileEntity) {
           try {
             final remark = remarkDelServidor(File(tempFilePath).readAsStringSync());
-            if (remark.isNotEmpty) name = remark;
+            if (remark == desactivadoRemark && profile.name.isNotBlank) {
+              name = profile.name; // cliente desactivado: se conserva el nombre que ya tenía
+            } else if (remark.isNotEmpty) {
+              name = remark;
+            }
           } catch (_) {}
         }
         if (headers['content-disposition'] case final String contentDispositionHeader when name.isBlank) {

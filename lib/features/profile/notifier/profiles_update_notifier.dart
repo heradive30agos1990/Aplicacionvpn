@@ -37,6 +37,7 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
   static const defaultCheckSeconds = 15;
   static const loadedMessage = "Se cargó el servidor exitosamente";
   static const noInternetSeconds = 20;
+  static const _desactivado = '__DESACTIVADO__';
 
   @override
   Stream<ProfileUpdateStatus?> build() {
@@ -79,10 +80,13 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
     await _tick(manual: true);
   }
 
-  Future<void> _tick({bool manual = false, bool alAbrir = false}) async {
+  /// Al volver a la app desde segundo plano: revisa enseguida si el servidor cambió.
+  Future<void> revisarAlVolver() => _tick(reanudar: true);
+
+  Future<void> _tick({bool manual = false, bool alAbrir = false, bool reanudar = false}) async {
     final seconds = ref.read(sharedPreferencesProvider).requireValue.getInt(intervalPrefKey) ?? defaultCheckSeconds;
     final now = DateTime.now();
-    final force = manual || alAbrir || _firstRun;
+    final force = manual || alAbrir || reanudar || _firstRun;
     final last = _lastCheck;
     if (!force && last != null && now.difference(last) < Duration(seconds: seconds)) return;
     if (_busy) {
@@ -134,6 +138,17 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
       try {
         final response = await client.get<String>(_noCache(profile.url), responseType: ResponseType.plain);
         body = response.data ?? '';
+        if (body.trim().isEmpty || (body.trim().length < 40 && !body.contains('://'))) body = _desactivado;
+      } on DioException catch (e) {
+        final code = e.response?.statusCode;
+        if (code == 400 || code == 401 || code == 403 || code == 404 || code == 410) {
+          // El servidor respondió pero rechazó la suscripción: cliente desactivado.
+          body = _desactivado;
+        } else {
+          loggy.debug("no se pudo descargar la suscripción: $e");
+          downloadFailed = true;
+          continue;
+        }
       } catch (e) {
         loggy.debug("no se pudo descargar la suscripción: $e");
         downloadFailed = true;
