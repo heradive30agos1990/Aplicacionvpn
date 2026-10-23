@@ -1,0 +1,61 @@
+name: Windows
+on:
+  workflow_dispatch:
+
+env:
+  IS_GITHUB_ACTIONS: 1
+  FLUTTER_VERSION: '3.38.5'
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: subosito/flutter-action@v2.21.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Instalador (Inno Setup)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y }
+          Add-Content $env:GITHUB_PATH "${env:ProgramFiles(x86)}\Inno Setup 6"
+
+      - name: Dependencias
+        shell: pwsh
+        run: |
+          make windows-install-deps
+          Add-Content $env:GITHUB_PATH "$env:LOCALAPPDATA\Pub\Cache\bin"
+          Add-Content $env:GITHUB_PATH "$HOME\.pub-cache\bin"
+
+      - name: Preparar (motor de VPN y archivos generados)
+        shell: pwsh
+        run: make windows-prepare
+
+      - name: Compilar versión portable (zip)
+        shell: pwsh
+        run: make windows-zip-release
+
+      - name: Compilar instalador (exe)
+        shell: pwsh
+        run: make windows-exe-release
+
+      - name: Reunir resultados
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path dist -Recurse | Select-Object FullName
+          New-Item -ItemType Directory -Path "out" -Force | Out-Null
+          Get-ChildItem -Path dist -Recurse -File | Where-Object { $_.Extension -in '.exe','.zip' } | ForEach-Object {
+            Copy-Item $_.FullName -Destination (Join-Path "out" $_.Name) -Force
+          }
+          Get-ChildItem out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/*
