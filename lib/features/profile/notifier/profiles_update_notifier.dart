@@ -146,7 +146,6 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
     // No se pudo descargar nada y la app está conectada: ¿hay internet?
     if (downloadFailed && !downloadedAny && ref.read(serviceRunningProvider)) {
       _setInfo("Sin conexión", ok: false);
-      await _disconnectIfNoInternet();
       return;
     }
 
@@ -182,8 +181,8 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
     if (ok > 0) {
       _setInfo(changedIds.isNotEmpty ? "Servidor actualizado" : "Actualizada");
       notification.showSuccessToast(loadedMessage);
-      // La configuración cambió: 5 segundos después de cargarla, se desconecta.
-      if (changedIds.isNotEmpty && ref.read(serviceRunningProvider)) {
+      // Cada vez que se carga la suscripción con la VPN conectada: 5 segundos después de cargarla, se desconecta.
+      if (ref.read(serviceRunningProvider)) {
         unawaited(
           Future<void>.delayed(const Duration(seconds: 5), () async {
             if (ref.read(serviceRunningProvider)) {
@@ -204,26 +203,5 @@ class ForegroundProfilesUpdateNotifier extends _$ForegroundProfilesUpdateNotifie
     final u = Uri.tryParse(url.trim());
     if (u == null) return url;
     return u.replace(queryParameters: {...u.queryParameters, '_t': DateTime.now().millisecondsSinceEpoch.toString()}).toString();
-  }
-
-  /// Comprueba el internet por el túnel durante 20 s. Si no hay, se desconecta sola.
-  Future<void> _disconnectIfNoInternet() async {
-    final deadline = DateTime.now().add(const Duration(seconds: noInternetSeconds));
-    while (true) {
-      if (!ref.read(serviceRunningProvider)) return;
-      try {
-        await ref.read(activeProxyNotifierProvider.notifier).urlTest("");
-      } catch (_) {}
-      await Future<void>.delayed(const Duration(seconds: 4));
-      final delay = ref.read(activeProxyNotifierProvider).valueOrNull?.urlTestDelay ?? 0;
-      if (ConnectionConst.isValidDelay(delay)) {
-        loggy.info("hay internet, sigue conectado");
-        return;
-      }
-      if (DateTime.now().isAfter(deadline)) break;
-    }
-    loggy.warning("sin internet por 20 s, desconectando");
-    await ref.read(connectionNotifierProvider.notifier).abortConnection();
-    ref.read(inAppNotificationControllerProvider).showErrorToast("Sin internet. Se desconectó.");
   }
 }
